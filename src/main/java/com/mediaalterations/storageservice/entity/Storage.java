@@ -25,6 +25,7 @@ public class Storage {
 
     private String userId;
 
+    //this becomes the object key when using S3
     private String path;
     private String fileName;
     private String mediaType;

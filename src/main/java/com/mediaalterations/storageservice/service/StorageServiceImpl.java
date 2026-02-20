@@ -15,6 +15,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,13 +36,20 @@ import java.util.UUID;
 @Slf4j
 public class StorageServiceImpl implements StorageService {
 
+    private final S3Client s3Client;
     private final StorageRepository storageRepository;
 
-    @Value("${app.paths.dir.uploads}")
-    private String baseUploadPath;
+//    @Value("${app.paths.dir.uploads}")
+//    private String baseUploadPath;
+//
+//    @Value("${app.paths.dir.downloads}")
+//    private String baseDownloadPath;
 
-    @Value("${app.paths.dir.downloads}")
-    private String baseDownloadPath;
+    @Value("${garage.bucket.uploads}")
+    private String uploadsBucket;
+
+    @Value("${garage.bucket.downloads}")
+    private String downloadsBucket;
 
     // ================= STORE =================
 
@@ -56,28 +70,43 @@ public class StorageServiceImpl implements StorageService {
 
 
         try {
+            String objectKey = UUID.randomUUID() + "-" +
+                    StringUtils.cleanPath(file.getOriginalFilename());
+
+            // Upload to Garage
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(uploadsBucket)
+                            .key(objectKey)
+                            .contentType(file.getContentType())
+                            .build(),
+                    RequestBody.fromInputStream(file.getInputStream(), file.getSize())
+            );
+
+            //Local file storage
+/*
             Path basePath = Path.of(baseUploadPath);
             Files.createDirectories(basePath);
-
             String filename = UUID.randomUUID().toString();
             String finalName = filename + "-" + StringUtils.cleanPath(file.getOriginalFilename());
 
-            Path target = basePath.resolve(finalName);
 
+            Path target = basePath.resolve(finalName);
             Files.copy(file.getInputStream(), target);
+*/
 
             Storage storageEntity = storageRepository.save(
                     new Storage(
                             userId,
-                            target.toString(),
-                            finalName,
+//                            target.toString(),
+                            objectKey,
+                            objectKey,
                             file.getContentType(),
                             false
                     )
             );
 
-            log.info("File stored successfully. storageId={}, userId={}",
-                    storageEntity.getId(), userId);
+            log.info("Stored in Garage. storageId={}, key={}", storageEntity.getId(), objectKey);
 
             return storageEntity.getId().toString();
 
@@ -112,16 +141,35 @@ public class StorageServiceImpl implements StorageService {
             throw new StorageOperationException("File is not available for download", null);
         }
 
-        FileSystemResource resource = new FileSystemResource(storage.getPath());
+//        FileSystemResource resource = new FileSystemResource(storage.getPath());
+//
+//        if (!resource.exists()) {
+//            log.error("Physical file missing on disk. storageId={}, path={}",
+//                    storageId, storage.getPath());
+//            throw new StorageNotFoundException("File not found");
+//        }
 
-        if (!resource.exists()) {
-            log.error("Physical file missing on disk. storageId={}, path={}",
-                    storageId, storage.getPath());
-            throw new StorageNotFoundException("File not found");
+        try {
+            // Stream from Garage to temp file
+            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
+                    GetObjectRequest.builder()
+                            .bucket(downloadsBucket)
+                            .key(storage.getPath()) // path column now holds the object key
+                            .build()
+            );
+
+            Path tempFile = Files.createTempFile("download-", storage.getFileName());
+            Files.write(tempFile, object.asByteArray());
+            tempFile.toFile().deleteOnExit();
+
+            log.info("File download permitted. storageId={}, userId={}", storageId, userId);
+
+            return new FileSystemResource(tempFile);
+
+        } catch (Exception e) {
+            throw new StorageNotFoundException("Failed to retrieve file from storage");
         }
 
-        log.info("File download permitted. storageId={}, userId={}", storageId, userId);
-        return resource;
     }
 
     // ================= GET PATH =================
@@ -148,37 +196,35 @@ public class StorageServiceImpl implements StorageService {
         log.info("Generating output path. userId={}, originalFileName={}",
                 userId, orgFileName);
 
-        try {
-            Path basePath = Path.of(baseDownloadPath);
-            Files.createDirectories(basePath);
+        //            Path basePath = Path.of(baseDownloadPath);
+//            Files.createDirectories(basePath);
+//
+//            String filename = UUID.randomUUID().toString();
+//            String finalName = filename + "." + contentType;
+//
+//            Path target = basePath.resolve(finalName);
 
-            String filename = UUID.randomUUID().toString();
-            String finalName = filename + "." + contentType;
+        String objectKey = UUID.randomUUID() + "." + contentType;
+        Storage storageEntity = storageRepository.save(
+                new Storage(
+                        userId,
+                        objectKey,
+                        objectKey,
+//                            target.toString(),
+//                            finalName,
+                        contentType,
+                        false
+                )
+        );
 
-            Path target = basePath.resolve(finalName);
+        log.info("Output path generated. storageId={}, filename={}",
+                storageEntity.getId(), objectKey);
 
-            Storage storageEntity = storageRepository.save(
-                    new Storage(
-                            userId,
-                            target.toString(),
-                            finalName,
-                            contentType,
-                            false
-                    )
-            );
+        return new OutputPathResponse(
+                storageEntity.getId().toString(),
+                objectKey
+        );
 
-            log.info("Output path generated. storageId={}, filename={}",
-                    storageEntity.getId(), finalName);
-
-            return new OutputPathResponse(
-                    storageEntity.getId().toString(),
-                    target.toString()
-            );
-
-        } catch (IOException e) {
-            log.error("Failed to generate output path. userId={}", userId, e);
-            throw new StorageOperationException("Failed to generate output path", e);
-        }
     }
 
     // ================= GET DETAILS =================
@@ -217,15 +263,21 @@ public class StorageServiceImpl implements StorageService {
         }
 
         for (StorageDeleteProjection record : records) {
-            try {
-                Files.deleteIfExists(Paths.get(record.path()));
-                log.info("Deleted file from disk. fileName={}", record.fileName());
-            } catch (IOException e) {
-                log.error("Failed to delete file from disk. fileName={}",
-                        record.fileName(), e);
-                throw new StorageOperationException(
-                        "Failed to delete file: " + record.fileName(), e);
-            }
+//            try {
+//                Files.deleteIfExists(Paths.get(record.path()));
+//                log.info("Deleted file from disk. fileName={}", record.fileName());
+//            } catch (IOException e) {
+//                log.error("Failed to delete file from disk. fileName={}",
+//                        record.fileName(), e);
+//                throw new StorageOperationException(
+//                        "Failed to delete file: " + record.fileName(), e);
+//            }
+
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(uploadsBucket)
+                    .key(record.path())
+                    .build());
+            log.info("Deleted from Garage. key={}", record.path());
         }
 
         storageRepository.deleteByIdsAndUserId(uuids, userId);
