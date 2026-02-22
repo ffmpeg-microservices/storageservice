@@ -36,256 +36,269 @@ import java.util.UUID;
 @Slf4j
 public class StorageServiceImpl implements StorageService {
 
-    private final S3Client s3Client;
-    private final StorageRepository storageRepository;
+        private final S3Client s3Client;
+        private final StorageRepository storageRepository;
 
-//    @Value("${app.paths.dir.uploads}")
-//    private String baseUploadPath;
-//
-//    @Value("${app.paths.dir.downloads}")
-//    private String baseDownloadPath;
+        // @Value("${app.paths.dir.uploads}")
+        // private String baseUploadPath;
+        //
+        // @Value("${app.paths.dir.downloads}")
+        // private String baseDownloadPath;
 
-    @Value("${garage.bucket.uploads}")
-    private String uploadsBucket;
+        @Value("${garage.bucket.uploads}")
+        private String uploadsBucket;
 
-    @Value("${garage.bucket.downloads}")
-    private String downloadsBucket;
+        @Value("${garage.bucket.downloads}")
+        private String downloadsBucket;
 
-    // ================= STORE =================
+        // ================= STORE =================
 
-    @Override
-    public String store(MultipartFile file, String userId) {
+        @Override
+        public String store(MultipartFile file, String userId) {
 
-        log.info("Upload request received. userId={}, originalFilename={}",
-                userId, file.getOriginalFilename());
+                log.info("Upload request received. userId={}, originalFilename={}",
+                                userId, file.getOriginalFilename());
 
-        if (file.isEmpty()) {
-            throw new StorageOperationException("Uploaded file is empty", null);
+                if (file.isEmpty()) {
+                        throw new StorageOperationException("Uploaded file is empty", null);
+                }
+
+                if (!file.getContentType().startsWith("video/")
+                                && !file.getContentType().startsWith("audio/")) {
+                        throw new StorageOperationException("Only audio/video allowed", null);
+                }
+
+                try {
+                        String objectKey = UUID.randomUUID() + "-" +
+                                        StringUtils.cleanPath(file.getOriginalFilename());
+
+                        // Upload to Garage
+                        s3Client.putObject(
+                                        PutObjectRequest.builder()
+                                                        .bucket(uploadsBucket)
+                                                        .key(objectKey)
+                                                        .contentType(file.getContentType())
+                                                        .build(),
+                                        RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+
+                        // Local file storage
+                        /*
+                         * Path basePath = Path.of(baseUploadPath);
+                         * Files.createDirectories(basePath);
+                         * String filename = UUID.randomUUID().toString();
+                         * String finalName = filename + "-" +
+                         * StringUtils.cleanPath(file.getOriginalFilename());
+                         * 
+                         * 
+                         * Path target = basePath.resolve(finalName);
+                         * Files.copy(file.getInputStream(), target);
+                         */
+
+                        Storage storageEntity = storageRepository.save(
+                                        new Storage(
+                                                        userId,
+                                                        // target.toString(),
+                                                        objectKey,
+                                                        objectKey,
+                                                        file.getContentType(),
+                                                        false));
+
+                        log.info("Stored in Garage. storageId={}, key={}", storageEntity.getId(), objectKey);
+
+                        return storageEntity.getId().toString();
+
+                } catch (IOException e) {
+                        log.error("File upload failed. userId={}, file={}",
+                                        userId, file.getOriginalFilename(), e);
+                        throw new StorageOperationException("Failed to store file", e);
+                }
         }
 
-        if (!file.getContentType().startsWith("video/")
-                && !file.getContentType().startsWith("audio/")) {
-            throw new StorageOperationException("Only audio/video allowed", null);
+        // ================= DOWNLOAD =================
+
+        @Override
+        public FileSystemResource download(String storageId, String userId) {
+
+                log.info("Download request. storageId={}, userId={}", storageId, userId);
+
+                Storage storage = storageRepository.findById(UUID.fromString(storageId))
+                                .orElseThrow(() -> {
+                                        log.warn("Download failed. File not found. storageId={}", storageId);
+                                        return new StorageNotFoundException("File not found");
+                                });
+
+                if (!storage.getUserId().equals(userId)) {
+                        log.warn("Unauthorized download attempt. storageId={}, requestedBy={}",
+                                        storageId, userId);
+                        throw new UnauthorizedStorageAccessException("Unauthorized to download this file");
+                }
+
+                if (!storage.isDownloadable()) {
+                        log.warn("File is not marked downloadable. storageId={}", storageId);
+                        throw new StorageOperationException("File is not available for download", null);
+                }
+
+                // FileSystemResource resource = new FileSystemResource(storage.getPath());
+                //
+                // if (!resource.exists()) {
+                // log.error("Physical file missing on disk. storageId={}, path={}",
+                // storageId, storage.getPath());
+                // throw new StorageNotFoundException("File not found");
+                // }
+
+                try {
+                        // Stream from Garage to temp file
+                        ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
+                                        GetObjectRequest.builder()
+                                                        .bucket(downloadsBucket)
+                                                        .key(storage.getPath()) // path column now holds the object key
+                                                        .build());
+
+                        Path tempFile = Files.createTempFile("download-", storage.getFileName());
+                        Files.write(tempFile, object.asByteArray());
+                        tempFile.toFile().deleteOnExit();
+
+                        log.info("File download permitted. storageId={}, userId={}", storageId, userId);
+
+                        return new FileSystemResource(tempFile);
+
+                } catch (Exception e) {
+                        throw new StorageNotFoundException("Failed to retrieve file from storage");
+                }
+
         }
 
+        // ================= GET PATH =================
 
-        try {
-            String objectKey = UUID.randomUUID() + "-" +
-                    StringUtils.cleanPath(file.getOriginalFilename());
+        @Override
+        public String getPathFromStorageId(String storageId, String userId) {
 
-            // Upload to Garage
-            s3Client.putObject(
-                    PutObjectRequest.builder()
-                            .bucket(uploadsBucket)
-                            .key(objectKey)
-                            .contentType(file.getContentType())
-                            .build(),
-                    RequestBody.fromInputStream(file.getInputStream(), file.getSize())
-            );
+                log.debug("Fetching path for storageId={}, userId={}", storageId, userId);
 
-            //Local file storage
-/*
-            Path basePath = Path.of(baseUploadPath);
-            Files.createDirectories(basePath);
-            String filename = UUID.randomUUID().toString();
-            String finalName = filename + "-" + StringUtils.cleanPath(file.getOriginalFilename());
-
-
-            Path target = basePath.resolve(finalName);
-            Files.copy(file.getInputStream(), target);
-*/
-
-            Storage storageEntity = storageRepository.save(
-                    new Storage(
-                            userId,
-//                            target.toString(),
-                            objectKey,
-                            objectKey,
-                            file.getContentType(),
-                            false
-                    )
-            );
-
-            log.info("Stored in Garage. storageId={}, key={}", storageEntity.getId(), objectKey);
-
-            return storageEntity.getId().toString();
-
-        } catch (IOException e) {
-            log.error("File upload failed. userId={}, file={}",
-                    userId, file.getOriginalFilename(), e);
-            throw new StorageOperationException("Failed to store file", e);
-        }
-    }
-
-    // ================= DOWNLOAD =================
-
-    @Override
-    public FileSystemResource download(String storageId, String userId) {
-
-        log.info("Download request. storageId={}, userId={}", storageId, userId);
-
-        Storage storage = storageRepository.findById(UUID.fromString(storageId))
-                .orElseThrow(() -> {
-                    log.warn("Download failed. File not found. storageId={}", storageId);
-                    return new StorageNotFoundException("File not found");
-                });
-
-        if (!storage.getUserId().equals(userId)) {
-            log.warn("Unauthorized download attempt. storageId={}, requestedBy={}",
-                    storageId, userId);
-            throw new UnauthorizedStorageAccessException("Unauthorized to download this file");
+                return storageRepository.getPathFromId(UUID.fromString(storageId))
+                                .orElseThrow(() -> {
+                                        log.warn("Path not found for storageId={}", storageId);
+                                        return new StorageNotFoundException("File path not found");
+                                });
         }
 
-        if (!storage.isDownloadable()) {
-            log.warn("File is not marked downloadable. storageId={}", storageId);
-            throw new StorageOperationException("File is not available for download", null);
+        // ================= GENERATE OUTPUT =================
+
+        @Override
+        public OutputPathResponse generateOutputPath(String orgFileName,
+                        String contentType,
+                        String userId) {
+
+                log.info("Generating output path. userId={}, originalFileName={}",
+                                userId, orgFileName);
+
+                // Path basePath = Path.of(baseDownloadPath);
+                // Files.createDirectories(basePath);
+                //
+                // String filename = UUID.randomUUID().toString();
+                // String finalName = filename + "." + contentType;
+                //
+                // Path target = basePath.resolve(finalName);
+
+                String objectKey = UUID.randomUUID() + "." + contentType;
+                Storage storageEntity = storageRepository.save(
+                                new Storage(
+                                                userId,
+                                                objectKey,
+                                                objectKey,
+                                                // target.toString(),
+                                                // finalName,
+                                                contentType,
+                                                false));
+
+                log.info("Output path generated. storageId={}, filename={}",
+                                storageEntity.getId(), objectKey);
+
+                return new OutputPathResponse(
+                                storageEntity.getId().toString(),
+                                objectKey);
+
         }
 
-//        FileSystemResource resource = new FileSystemResource(storage.getPath());
-//
-//        if (!resource.exists()) {
-//            log.error("Physical file missing on disk. storageId={}, path={}",
-//                    storageId, storage.getPath());
-//            throw new StorageNotFoundException("File not found");
-//        }
+        // ================= GET DETAILS =================
 
-        try {
-            // Stream from Garage to temp file
-            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
-                    GetObjectRequest.builder()
-                            .bucket(downloadsBucket)
-                            .key(storage.getPath()) // path column now holds the object key
-                            .build()
-            );
+        @Override
+        public Storage getStorageDetails(String storageId) {
 
-            Path tempFile = Files.createTempFile("download-", storage.getFileName());
-            Files.write(tempFile, object.asByteArray());
-            tempFile.toFile().deleteOnExit();
+                log.debug("Fetching storage details. storageId={}", storageId);
 
-            log.info("File download permitted. storageId={}, userId={}", storageId, userId);
-
-            return new FileSystemResource(tempFile);
-
-        } catch (Exception e) {
-            throw new StorageNotFoundException("Failed to retrieve file from storage");
+                return storageRepository.findById(UUID.fromString(storageId))
+                                .orElseThrow(() -> {
+                                        log.warn("Storage not found. storageId={}", storageId);
+                                        return new StorageNotFoundException("No file found");
+                                });
         }
 
-    }
+        // ================= DELETE =================
 
-    // ================= GET PATH =================
+        @Override
+        @Transactional
+        public List<String> deleteStorage(List<String> storageIds, String userId) {
 
-    @Override
-    public String getPathFromStorageId(String storageId, String userId) {
+                log.info("Delete request. userId={}, totalFiles={}",
+                                userId, storageIds.size());
 
-        log.debug("Fetching path for storageId={}, userId={}", storageId, userId);
+                List<UUID> uuids = storageIds.stream()
+                                .map(UUID::fromString)
+                                .toList();
 
-        return storageRepository.getPathFromId(UUID.fromString(storageId))
-                .orElseThrow(() -> {
-                    log.warn("Path not found for storageId={}", storageId);
-                    return new StorageNotFoundException("File path not found");
-                });
-    }
+                List<StorageDeleteProjection> records = storageRepository.findForDeletion(uuids, userId);
 
-    // ================= GENERATE OUTPUT =================
+                if (records.isEmpty()) {
+                        log.warn("No valid files found for deletion. userId={}", userId);
+                        throw new StorageNotFoundException("No valid files found.");
+                }
 
-    @Override
-    public OutputPathResponse generateOutputPath(String orgFileName,
-                                                 String contentType,
-                                                 String userId) {
+                for (StorageDeleteProjection record : records) {
+                        // try {
+                        // Files.deleteIfExists(Paths.get(record.path()));
+                        // log.info("Deleted file from disk. fileName={}", record.fileName());
+                        // } catch (IOException e) {
+                        // log.error("Failed to delete file from disk. fileName={}",
+                        // record.fileName(), e);
+                        // throw new StorageOperationException(
+                        // "Failed to delete file: " + record.fileName(), e);
+                        // }
 
-        log.info("Generating output path. userId={}, originalFileName={}",
-                userId, orgFileName);
+                        s3Client.deleteObject(DeleteObjectRequest.builder()
+                                        .bucket(uploadsBucket)
+                                        .key(record.path())
+                                        .build());
+                        log.info("Deleted from Garage. key={}", record.path());
+                }
 
-        //            Path basePath = Path.of(baseDownloadPath);
-//            Files.createDirectories(basePath);
-//
-//            String filename = UUID.randomUUID().toString();
-//            String finalName = filename + "." + contentType;
-//
-//            Path target = basePath.resolve(finalName);
+                storageRepository.deleteByIdsAndUserId(uuids, userId);
 
-        String objectKey = UUID.randomUUID() + "." + contentType;
-        Storage storageEntity = storageRepository.save(
-                new Storage(
-                        userId,
-                        objectKey,
-                        objectKey,
-//                            target.toString(),
-//                            finalName,
-                        contentType,
-                        false
-                )
-        );
+                log.info("Database records deleted successfully. userId={}", userId);
 
-        log.info("Output path generated. storageId={}, filename={}",
-                storageEntity.getId(), objectKey);
-
-        return new OutputPathResponse(
-                storageEntity.getId().toString(),
-                objectKey
-        );
-
-    }
-
-    // ================= GET DETAILS =================
-
-    @Override
-    public Storage getStorageDetails(String storageId) {
-
-        log.debug("Fetching storage details. storageId={}", storageId);
-
-        return storageRepository.findById(UUID.fromString(storageId))
-                .orElseThrow(() -> {
-                    log.warn("Storage not found. storageId={}", storageId);
-                    return new StorageNotFoundException("No file found");
-                });
-    }
-
-    // ================= DELETE =================
-
-    @Override
-    @Transactional
-    public List<String> deleteStorage(List<String> storageIds, String userId) {
-
-        log.info("Delete request. userId={}, totalFiles={}",
-                userId, storageIds.size());
-
-        List<UUID> uuids = storageIds.stream()
-                .map(UUID::fromString)
-                .toList();
-
-        List<StorageDeleteProjection> records =
-                storageRepository.findForDeletion(uuids, userId);
-
-        if (records.isEmpty()) {
-            log.warn("No valid files found for deletion. userId={}", userId);
-            throw new StorageNotFoundException("No valid files found.");
+                return records.stream()
+                                .map(StorageDeleteProjection::fileName)
+                                .toList();
         }
 
-        for (StorageDeleteProjection record : records) {
-//            try {
-//                Files.deleteIfExists(Paths.get(record.path()));
-//                log.info("Deleted file from disk. fileName={}", record.fileName());
-//            } catch (IOException e) {
-//                log.error("Failed to delete file from disk. fileName={}",
-//                        record.fileName(), e);
-//                throw new StorageOperationException(
-//                        "Failed to delete file: " + record.fileName(), e);
-//            }
+        @Override
+        public void makeFileDownloadable(String storageId) {
+                log.info("Marking file as downloadable. storageId={}", storageId);
 
-            s3Client.deleteObject(DeleteObjectRequest.builder()
-                    .bucket(uploadsBucket)
-                    .key(record.path())
-                    .build());
-            log.info("Deleted from Garage. key={}", record.path());
+                Storage storage = storageRepository.findById(UUID.fromString(storageId))
+                                .orElseThrow(() -> {
+                                        log.warn("Storage not found. storageId={}", storageId);
+                                        return new StorageNotFoundException("File not found");
+                                });
+
+                if (storage.isDownloadable()) {
+                        log.info("File already marked as downloadable. storageId={}", storageId);
+                        return;
+                }
+
+                storage.setDownloadable(true);
+                storageRepository.save(storage);
+
+                log.info("File marked as downloadable. storageId={}", storageId);
         }
-
-        storageRepository.deleteByIdsAndUserId(uuids, userId);
-
-        log.info("Database records deleted successfully. userId={}", userId);
-
-        return records.stream()
-                .map(StorageDeleteProjection::fileName)
-                .toList();
-    }
 }

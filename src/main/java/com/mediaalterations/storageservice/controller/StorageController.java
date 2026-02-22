@@ -65,6 +65,13 @@ public class StorageController {
         return ResponseEntity.ok(path);
     }
 
+    @GetMapping("/makeFileDownloadable/{storageId}")
+    public ResponseEntity<String> makeFileDownloadable(
+            @PathVariable("filename") String storageId) {
+        storageService.makeFileDownloadable(storageId);
+        return ResponseEntity.ok(storageId);
+    }
+
     @DeleteMapping("/delete")
     public ResponseEntity<List<String>> deleteStorage(
             @RequestBody List<String> storageIds,

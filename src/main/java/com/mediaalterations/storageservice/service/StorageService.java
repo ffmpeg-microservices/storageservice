@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.List;
 
 public interface StorageService {
-    String store(MultipartFile file,String userId) throws IOException;
+    String store(MultipartFile file, String userId) throws IOException;
 
     FileSystemResource download(String filePath, String userId) throws Exception;
 
@@ -20,4 +20,6 @@ public interface StorageService {
     Storage getStorageDetails(String storageId);
 
     List<String> deleteStorage(List<String> storageIds, String userId);
+
+    void makeFileDownloadable(String storageId);
 }
