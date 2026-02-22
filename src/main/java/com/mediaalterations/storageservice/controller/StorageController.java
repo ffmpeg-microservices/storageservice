@@ -25,20 +25,19 @@ public class StorageController {
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestHeader("user_id") String userId
-    ) throws IOException {
-        String storageId = storageService.store(file,userId);
+            @RequestHeader("user_id") String userId) throws IOException {
+        String storageId = storageService.store(file, userId);
         return ResponseEntity.ok(storageId);
     }
 
-    @PostMapping("/download")
+    @GetMapping("/download/{storage_id}")
     public ResponseEntity<Resource> downloadFile(
-            @RequestParam("storage_id") String storageId,
+            @PathVariable("storage_id") String storageId,
             @RequestHeader("user_id") String userId) throws Exception {
-        FileSystemResource resource = storageService.download(storageId,userId);
+        FileSystemResource resource = storageService.download(storageId, userId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\""+resource.getFilename()+"\"")
+                        "attachment; filename=\"" + resource.getFilename() + "\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
     }
@@ -47,7 +46,7 @@ public class StorageController {
     public ResponseEntity<String> getPathFromStorageId(
             @PathVariable("id") String storageId,
             @RequestHeader("user_id") String userId) throws Exception {
-        String path = storageService.getPathFromStorageId(storageId,userId);
+        String path = storageService.getPathFromStorageId(storageId, userId);
         return ResponseEntity.ok(path);
     }
 
@@ -62,7 +61,7 @@ public class StorageController {
             @PathVariable("filename") String filename,
             @PathVariable("contentType") String contentType,
             @RequestHeader("user_id") String userId) throws Exception {
-        OutputPathResponse path = storageService.generateOutputPath(filename,contentType,userId);
+        OutputPathResponse path = storageService.generateOutputPath(filename, contentType, userId);
         return ResponseEntity.ok(path);
     }
 
@@ -71,9 +70,7 @@ public class StorageController {
             @RequestBody List<String> storageIds,
             @RequestHeader("user_id") String userId) {
 
-        return ResponseEntity.ok(storageService.deleteStorage(storageIds,userId));
+        return ResponseEntity.ok(storageService.deleteStorage(storageIds, userId));
     }
-
-
 
 }
