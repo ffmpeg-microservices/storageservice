@@ -67,7 +67,7 @@ public class StorageController {
 
     @GetMapping("/makeFileDownloadable/{storageId}")
     public ResponseEntity<String> makeFileDownloadable(
-            @PathVariable("filename") String storageId) {
+            @PathVariable("storageId") String storageId) {
         storageService.makeFileDownloadable(storageId);
         return ResponseEntity.ok(storageId);
     }
