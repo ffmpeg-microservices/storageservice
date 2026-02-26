@@ -83,7 +83,7 @@ public class StorageController {
         return ResponseEntity.ok(storageService.deleteStorage(storageIds, userId));
     }
 
-    @GetMapping("/getUserUploadedMedia}")
+    @GetMapping("/getUserUploadedMedia")
     public ResponseEntity<List<StorageDto>> getUserUploadedMedia(
             @RequestHeader("user_id") String userId) {
         return ResponseEntity.ok(storageService.getUserUploadedMedia(userId));
