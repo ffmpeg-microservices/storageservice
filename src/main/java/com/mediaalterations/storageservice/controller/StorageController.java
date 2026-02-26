@@ -86,6 +86,6 @@ public class StorageController {
     @GetMapping("/getUserUploadedMedia}")
     public ResponseEntity<List<StorageDto>> getUserUploadedMedia(
             @RequestHeader("user_id") String userId) {
-        return ResponseEntity.ok(storageService.getUserUploadedMedia());
+        return ResponseEntity.ok(storageService.getUserUploadedMedia(userId));
     }
 }
