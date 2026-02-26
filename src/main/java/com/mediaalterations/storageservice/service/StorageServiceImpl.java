@@ -118,7 +118,7 @@ public class StorageServiceImpl implements StorageService {
                                                         objectKey,
                                                         objectKey,
                                                         mediaType,
-                                                        fileSize, duration, fileType, false));
+                                                        fileSize, duration, fileType, true));
 
                         log.info("Stored in Garage. storageId={}, key={}, size={}", storageEntity.getId(), objectKey,
                                         fileSize);
