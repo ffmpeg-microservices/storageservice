@@ -221,7 +221,7 @@ public class StorageServiceImpl implements StorageService {
                 //
                 // Path target = basePath.resolve(finalName);
 
-                String objectKey = UUID.randomUUID() + "." + contentType;
+                String objectKey = UUID.randomUUID() + "." + fileType;
                 Storage storageEntity = storageRepository.save(
                                 new Storage(
                                                 userId,
@@ -326,7 +326,7 @@ public class StorageServiceImpl implements StorageService {
 
         @Override
         public List<StorageDto> getUserUploadedMedia(String userId) {
-                log.info("Fetching uploaded media for user.");
+                log.info("Fetching uploaded media for user={}", userId);
 
                 List<Storage> storages = storageRepository.findByUserIdAndMediaTypeInAndIsDownloadable(
                                 userId, List.of("audio", "video"), true);
