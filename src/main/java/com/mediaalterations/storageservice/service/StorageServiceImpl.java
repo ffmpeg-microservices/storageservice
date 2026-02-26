@@ -2,6 +2,7 @@ package com.mediaalterations.storageservice.service;
 
 import com.mediaalterations.storageservice.dto.OutputPathResponse;
 import com.mediaalterations.storageservice.dto.StorageDeleteProjection;
+import com.mediaalterations.storageservice.dto.StorageDto;
 import com.mediaalterations.storageservice.entity.Storage;
 import com.mediaalterations.storageservice.exceptions.StorageNotFoundException;
 import com.mediaalterations.storageservice.exceptions.StorageOperationException;
@@ -53,6 +54,14 @@ public class StorageServiceImpl implements StorageService {
 
         // ================= STORE =================
 
+        private String getReadableFileSize(long size) {
+                if (size <= 0)
+                        return "0 B";
+                final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
+                int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
+                return String.format("%.1f %s", size / Math.pow(1024, digitGroups), units[digitGroups]);
+        }
+
         @Override
         public String store(MultipartFile file, String userId) {
 
@@ -94,16 +103,25 @@ public class StorageServiceImpl implements StorageService {
                          * Files.copy(file.getInputStream(), target);
                          */
 
+                        String fileSize = getReadableFileSize(file.getSize());
+                        String duration = "";
+                        String fileType = file.getOriginalFilename().contains(".")
+                                        ? file.getOriginalFilename()
+                                                        .substring(file.getOriginalFilename().lastIndexOf(".") + 1)
+                                        : "unknown";
+                        String mediaType = file.getContentType().startsWith("video/") ? "video" : "audio";
+
                         Storage storageEntity = storageRepository.save(
                                         new Storage(
                                                         userId,
                                                         // target.toString(),
                                                         objectKey,
                                                         objectKey,
-                                                        file.getContentType(),
-                                                        false));
+                                                        mediaType,
+                                                        fileSize, duration, fileType, false));
 
-                        log.info("Stored in Garage. storageId={}, key={}", storageEntity.getId(), objectKey);
+                        log.info("Stored in Garage. storageId={}, key={}, size={}", storageEntity.getId(), objectKey,
+                                        fileSize);
 
                         return storageEntity.getId().toString();
 
@@ -185,8 +203,11 @@ public class StorageServiceImpl implements StorageService {
         // ================= GENERATE OUTPUT =================
 
         @Override
-        public OutputPathResponse generateOutputPath(String orgFileName,
+        public OutputPathResponse generateOutputPath(
+                        String orgFileName,
                         String contentType,
+                        String fileType,
+                        String duration,
                         String userId) {
 
                 log.info("Generating output path. userId={}, originalFileName={}",
@@ -208,7 +229,8 @@ public class StorageServiceImpl implements StorageService {
                                                 objectKey,
                                                 // target.toString(),
                                                 // finalName,
-                                                contentType,
+                                                // since file duration will be updated later on
+                                                contentType, "0 KB", duration, fileType,
                                                 false));
 
                 log.info("Output path generated. storageId={}, filename={}",
@@ -300,5 +322,26 @@ public class StorageServiceImpl implements StorageService {
                 storageRepository.save(storage);
 
                 log.info("File marked as downloadable. storageId={}", storageId);
+        }
+
+        @Override
+        public List<StorageDto> getUserUploadedMedia(String userId) {
+                log.info("Fetching uploaded media for user.");
+
+                List<Storage> storages = storageRepository.findByUserIdAndMediaTypeIn(
+                                userId, List.of("audio", "video"));
+
+                return storages.stream()
+                                .map(s -> new StorageDto(
+                                                s.getId().toString(),
+                                                userId,
+                                                s.getPath(),
+                                                s.getFileName(),
+                                                s.getMediaType(),
+                                                s.getFileSize(),
+                                                s.getDuration(),
+                                                s.getFileType(),
+                                                s.isDownloadable()))
+                                .toList();
         }
 }

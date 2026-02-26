@@ -1,6 +1,7 @@
 package com.mediaalterations.storageservice.controller;
 
 import com.mediaalterations.storageservice.dto.OutputPathResponse;
+import com.mediaalterations.storageservice.dto.StorageDto;
 import com.mediaalterations.storageservice.entity.Storage;
 import com.mediaalterations.storageservice.service.StorageService;
 import lombok.RequiredArgsConstructor;
@@ -56,12 +57,14 @@ public class StorageController {
         return ResponseEntity.ok(storageService.getStorageDetails(storageId));
     }
 
-    @GetMapping("/generateOutputPath/{filename}/{contentType}")
+    @GetMapping("/generateOutputPath/{filename}/{contentType}/{duration}/{fileType}")
     public ResponseEntity<OutputPathResponse> generateOutputPath(
             @PathVariable("filename") String filename,
             @PathVariable("contentType") String contentType,
+            @PathVariable("duration") String duration,
+            @PathVariable("fileType") String fileType,
             @RequestHeader("user_id") String userId) throws Exception {
-        OutputPathResponse path = storageService.generateOutputPath(filename, contentType, userId);
+        OutputPathResponse path = storageService.generateOutputPath(filename, contentType, fileType, duration, userId);
         return ResponseEntity.ok(path);
     }
 
@@ -80,4 +83,9 @@ public class StorageController {
         return ResponseEntity.ok(storageService.deleteStorage(storageIds, userId));
     }
 
+    @GetMapping("/getUserUploadedMedia}")
+    public ResponseEntity<List<StorageDto>> getUserUploadedMedia(
+            @RequestHeader("user_id") String userId) {
+        return ResponseEntity.ok(storageService.getUserUploadedMedia());
+    }
 }

@@ -1,7 +1,10 @@
 package com.mediaalterations.storageservice.service;
 
 import com.mediaalterations.storageservice.dto.OutputPathResponse;
+import com.mediaalterations.storageservice.dto.StorageDto;
 import com.mediaalterations.storageservice.entity.Storage;
+
+import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,11 +18,18 @@ public interface StorageService {
 
     String getPathFromStorageId(String storageId, String userId) throws Exception;
 
-    OutputPathResponse generateOutputPath(String filename, String contentType, String userId) throws IOException;
+    OutputPathResponse generateOutputPath(
+            String orgFileName,
+            String contentType,
+            String fileType,
+            String duration,
+            String userId) throws IOException;
 
     Storage getStorageDetails(String storageId);
 
     List<String> deleteStorage(List<String> storageIds, String userId);
 
     void makeFileDownloadable(String storageId);
+
+    List<StorageDto> getUserUploadedMedia(String usreId);
 }

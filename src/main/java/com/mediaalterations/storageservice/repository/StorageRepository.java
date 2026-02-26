@@ -13,38 +13,35 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface StorageRepository extends JpaRepository<Storage,UUID> {
+public interface StorageRepository extends JpaRepository<Storage, UUID> {
 
-    @Query(
-            "select s.path from Storage s where id=:id"
-    )
-    Optional<String> getPathFromId(UUID id);
+        @Query("select s.path from Storage s where id=:id")
+        Optional<String> getPathFromId(UUID id);
 
-    @Modifying
-    @Query("""
-       DELETE FROM Storage s
-       WHERE s.id IN :ids
-       AND s.userId = :userId
-       """)
-    void deleteByIdsAndUserId(
-            @Param("ids") List<UUID> ids,
-            @Param("userId") String userId
-    );
+        @Modifying
+        @Query("""
+                        DELETE FROM Storage s
+                        WHERE s.id IN :ids
+                        AND s.userId = :userId
+                        """)
+        void deleteByIdsAndUserId(
+                        @Param("ids") List<UUID> ids,
+                        @Param("userId") String userId);
 
+        @Query("""
+                        SELECT new com.mediaalterations.storageservice.dto.StorageDeleteProjection(
+                               s.id,
+                               s.path,
+                               s.fileName
+                        )
+                        FROM Storage s
+                        WHERE s.id IN :ids
+                        AND s.userId = :userId
+                        """)
+        List<StorageDeleteProjection> findForDeletion(
+                        @Param("ids") List<UUID> ids,
+                        @Param("userId") String userId);
 
-    @Query("""
-       SELECT new com.mediaalterations.storageservice.dto.StorageDeleteProjection(
-              s.id,
-              s.path,
-              s.fileName
-       )
-       FROM Storage s
-       WHERE s.id IN :ids
-       AND s.userId = :userId
-       """)
-    List<StorageDeleteProjection> findForDeletion(
-            @Param("ids") List<UUID> ids,
-            @Param("userId") String userId
-    );
+        List<Storage> findByUserIdAndMediaTypeIn(String string, List<String> of);
 
 }

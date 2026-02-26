@@ -25,21 +25,30 @@ public class Storage {
 
     private String userId;
 
-    //this becomes the object key when using S3
+    // this becomes the object key when using S3
     private String path;
+
     private String fileName;
     private String mediaType;
+    private String fileSize;
+    private String duration;
+    private String fileType;
 
     private boolean isDownloadable;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
 
-    public Storage(String userId, String path,String fileName, String mediaType, boolean isDownloadable) {
+    public Storage(String userId, String path, String fileName, String mediaType, String fileSize, String duration,
+            String fileType, boolean isDownloadable) {
         this.userId = userId;
         this.path = path;
-        this.fileName=fileName;
-        this.mediaType=mediaType;
-        this.isDownloadable=isDownloadable;
+        this.fileName = fileName;
+        this.mediaType = mediaType;
+        this.fileSize = fileSize;
+        this.duration = duration;
+        this.fileType = fileType;
+        this.isDownloadable = isDownloadable;
     }
+
 }
