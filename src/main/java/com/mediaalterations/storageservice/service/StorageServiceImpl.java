@@ -328,8 +328,8 @@ public class StorageServiceImpl implements StorageService {
         public List<StorageDto> getUserUploadedMedia(String userId) {
                 log.info("Fetching uploaded media for user.");
 
-                List<Storage> storages = storageRepository.findByUserIdAndMediaTypeIn(
-                                userId, List.of("audio", "video"));
+                List<Storage> storages = storageRepository.findByUserIdAndMediaTypeInAndIsDownloadable(
+                                userId, List.of("audio", "video"), true);
 
                 return storages.stream()
                                 .map(s -> new StorageDto(
@@ -341,7 +341,7 @@ public class StorageServiceImpl implements StorageService {
                                                 s.getFileSize(),
                                                 s.getDuration(),
                                                 s.getFileType(),
-                                                s.isDownloadable()))
+                                                s.getCreatedAt()))
                                 .toList();
         }
 }

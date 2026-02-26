@@ -42,6 +42,7 @@ public interface StorageRepository extends JpaRepository<Storage, UUID> {
                         @Param("ids") List<UUID> ids,
                         @Param("userId") String userId);
 
-        List<Storage> findByUserIdAndMediaTypeIn(String string, List<String> of);
+        List<Storage> findByUserIdAndMediaTypeInAndIsDownloadable(String string, List<String> of,
+                        boolean isDownloadable);
 
 }
