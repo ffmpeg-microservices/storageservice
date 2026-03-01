@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/storage")
@@ -28,6 +29,14 @@ public class StorageController {
             @RequestParam("file") MultipartFile file,
             @RequestHeader("user_id") String userId) throws IOException {
         String storageId = storageService.store(file, userId);
+        return ResponseEntity.ok(storageId);
+    }
+
+    @PostMapping("/multiUpload")
+    public ResponseEntity<String[]> uploadMultipleFiles(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestHeader("user_id") String userId) throws IOException {
+        String[] storageId = storageService.storeMultipleFiles(files, userId);
         return ResponseEntity.ok(storageId);
     }
 
@@ -49,6 +58,14 @@ public class StorageController {
             @RequestHeader("user_id") String userId) throws Exception {
         String path = storageService.getPathFromStorageId(storageId, userId);
         return ResponseEntity.ok(path);
+    }
+
+    @GetMapping("/getAllPaths")
+    public ResponseEntity<Map<String, String>> getAllPathsFromStorageIds(
+            @RequestBody String[] storageIds,
+            @RequestHeader("user_id") String userId) throws Exception {
+        Map<String, String> paths = storageService.getAllPathsFromStorageIds(storageIds, userId);
+        return ResponseEntity.ok(paths);
     }
 
     @GetMapping("/getStorageDetails/{id}")

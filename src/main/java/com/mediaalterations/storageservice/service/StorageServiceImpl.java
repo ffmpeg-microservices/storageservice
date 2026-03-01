@@ -28,9 +28,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -118,7 +122,7 @@ public class StorageServiceImpl implements StorageService {
                                                         objectKey,
                                                         objectKey,
                                                         mediaType,
-                                                        fileSize, duration, fileType, true));
+                                                        fileSize, duration, fileType, false));
 
                         log.info("Stored in Garage. storageId={}, key={}, size={}", storageEntity.getId(), objectKey,
                                         fileSize);
@@ -132,6 +136,26 @@ public class StorageServiceImpl implements StorageService {
                 }
         }
 
+        @Override
+        public String[] storeMultipleFiles(MultipartFile[] files, String userId) {
+                log.info("Multiple file upload request received. userId={}, totalFiles={}", userId, files.length);
+                List<CompletableFuture<String>> futures = Arrays.stream(files)
+                                .peek(a -> log.info("Uploading file {}", a.getOriginalFilename()))
+                                .map(file -> CompletableFuture.supplyAsync(() -> store(file, userId))
+                                                .handle((result, ex) -> {
+                                                        if (ex != null) {
+                                                                log.error("Failed to upload file: {}",
+                                                                                file.getOriginalFilename(), ex);
+                                                                return "FAILED:" + file.getOriginalFilename();
+                                                        }
+                                                        return result;
+                                                }))
+                                .toList();
+
+                return futures.stream()
+                                .map(CompletableFuture::join)
+                                .toArray(String[]::new);
+        }
         // ================= DOWNLOAD =================
 
         @Override
@@ -200,6 +224,27 @@ public class StorageServiceImpl implements StorageService {
                                 });
         }
 
+        @Override
+        public Map<String, String> getAllPathsFromStorageIds(String[] storageIds, String userId) {
+                log.debug("Fetching paths for multiple storageIds. userId={}, totalIds={}", userId, storageIds.length);
+
+                List<UUID> uuids = Arrays.stream(storageIds)
+                                .map(UUID::fromString)
+                                .toList();
+
+                List<Storage> storages = storageRepository.findAllById(uuids);
+
+                if (storages.size() != storageIds.length) {
+                        log.warn("Some storage IDs not found. userId={}, requestedIds={}, foundIds={}",
+                                        userId, storageIds.length, storages.size());
+                        throw new StorageNotFoundException("Some file paths not found");
+                }
+
+                return storages.stream()
+                                .collect(Collectors.toMap(
+                                                s -> s.getId().toString(),
+                                                Storage::getPath));
+        }
         // ================= GENERATE OUTPUT =================
 
         @Override

@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 public interface StorageService {
     String store(MultipartFile file, String userId) throws IOException;
@@ -31,5 +32,9 @@ public interface StorageService {
 
     void makeFileDownloadable(String storageId);
 
-    List<StorageDto> getUserUploadedMedia(String usreId);
+    List<StorageDto> getUserUploadedMedia(String userId);
+
+    String[] storeMultipleFiles(MultipartFile[] files, String userId);
+
+    Map<String, String> getAllPathsFromStorageIds(String[] storageIds, String userId);
 }
