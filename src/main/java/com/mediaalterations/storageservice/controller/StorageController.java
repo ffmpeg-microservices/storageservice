@@ -60,7 +60,7 @@ public class StorageController {
         return ResponseEntity.ok(path);
     }
 
-    @GetMapping("/getAllPaths")
+    @PostMapping("/getAllPaths")
     public ResponseEntity<Map<String, String>> getAllPathsFromStorageIds(
             @RequestBody String[] storageIds,
             @RequestHeader("user_id") String userId) throws Exception {
